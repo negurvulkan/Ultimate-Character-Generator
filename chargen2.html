@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prozeduraler Körper-Generator (Complete)</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f4f9; color: #333; margin: 20px; }
+        h1 { text-align: center; color: #2c3e50; }
+        .container { max-width: 900px; margin: 0 auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 25px rgba(0,0,0,0.1); }
+        
+        /* Controls */
+        .controls { display: flex; justify-content: center; gap: 15px; align-items: center; margin-bottom: 30px; flex-wrap: wrap; }
+        label { font-weight: 600; color: #555; }
+        select, input { padding: 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 16px; }
+        button { padding: 10px 20px; font-size: 16px; background-color: #3498db; color: white; border: none; border-radius: 6px; cursor: pointer; transition: background 0.2s; }
+        button:hover { background-color: #2980b9; }
+
+        /* Table Styling */
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 0.95em; }
+        th, td { padding: 10px 15px; border-bottom: 1px solid #eee; text-align: left; }
+        th { background-color: #f8f9fa; color: #444; width: 45%; }
+        tr:hover { background-color: #fafafa; }
+        
+        /* Gender Specific Colors */
+        .theme-female th { background-color: #fff0f3; color: #a64452; }
+        .theme-male th { background-color: #eaf6ff; color: #2c5e85; }
+
+        /* Highlights & Sections */
+        .row-section { background-color: #eef2f5 !important; font-weight: bold; color: #2c3e50; font-size: 1.05em; border-top: 2px solid #fff; text-transform: uppercase; letter-spacing: 0.05em; }
+        .row-highlight { background-color: #e8f8f5; font-weight: 600; }
+        .row-clothing { background-color: #f0fdf4; color: #1e7e34; }
+        .row-puberty { background-color: #fff9db; font-style: italic; color: #856404; }
+
+        /* BMI Badges */
+        .badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 0.9em; font-weight: bold; }
+        .bmi-under { background-color: #cce5ff; color: #004085; }
+        .bmi-normal { background-color: #d4edda; color: #155724; }
+        .bmi-over { background-color: #fff3cd; color: #856404; }
+        .bmi-obese { background-color: #f8d7da; color: #721c24; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>Charakter-Maße Generator <small>(Complete)</small></h1>
+        
+        <div class="controls">
+            <div>
+                <label for="gender">Geschlecht:</label>
+                <select id="gender">
+                    <option value="male">Männlich</option>
+                    <option value="female">Weiblich</option>
+                </select>
+            </div>
+            <div>
+                <label for="age">Alter:</label>
+                <input type="number" id="age" min="1" max="90" value="25" style="width: 60px;">
+            </div>
+            <button onclick="app.run()">Generieren</button>
+        </div>
+        
+        <div id="result"></div>
+    </div>
+
+    <script>
+        /**
+         * =================================================================
+         * TEIL 1: HILFSFUNKTIONEN (MATH & TOOLS)
+         * =================================================================
+         */
+        const Utils = {
+            gaussian(mean, stddev) {
+                let u = 0, v = 0;
+                while(u === 0) u = Math.random();
+                while(v === 0) v = Math.random();
+                let z = Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+                return mean + stddev * z;
+            },
+            round(value, decimals = 1) {
+                const factor = Math.pow(10, decimals);
+                return Math.round(value * factor) / factor;
+            },
+            randomName(gender) {
+                const maleFirst = ["Alexander","Maximilian","Paul","Luca","Felix","Leon","Lukas","Jonas","Tim","Finn","Noah","Elias","Julian","Luis","Ben","Henry","Jakob","David","Moritz","Niklas"];
+                const femaleFirst = ["Sophie","Marie","Sophia","Emma","Mia","Hannah","Emilia","Anna","Lea","Lina","Mila","Ella","Leni","Leonie","Lilly","Emily","Clara","Laura","Lara","Johanna"];
+                const last = ["Müller","Schmidt","Schneider","Fischer","Weber","Meyer","Wagner","Becker","Schulz","Hoffmann","Schäfer","Koch","Bauer","Richter","Klein","Wolf","Schröder"];
+                
+                const f = gender === "male" ? maleFirst : femaleFirst;
+                return f[Math.floor(Math.random() * f.length)] + " " + last[Math.floor(Math.random() * last.length)];
+            }
+        };
+
+        /**
+         * =================================================================
+         * TEIL 2: LOGIK (MODELL)
+         * =================================================================
+         */
+        const CharacterGenerator = {
+            
+            config: {
+                male: { height: 175, waist: 85, hips: 95, shoulder: 46, hand: 19, foot: 26.5 },
+                female: { height: 162, waist: 72, hips: 96, shoulder: 39, hand: 17.5, foot: 24 }
+            },
+
+			generate(gender, age) {
+				// 1. Basis-Setup & Build
+				const base = this.config[gender];
+				const buildRand = Math.random();
+				let build = { type: "Mesomorph (athletisch)", factor: 1.0 };
+				if (buildRand < 0.33) build = { type: "Ektomorph (schlank)", factor: 0.92 };
+				else if (buildRand > 0.66) build = { type: "Endomorph (weich/rundlich)", factor: 1.08 };
+
+				// 2. Größe & Gewicht
+				const height = this.calcHeight(gender, age);
+				const weight = this.calcWeight(height, age, build.factor);
+				const bmi = Utils.round(weight / ((height/100)**2), 1);
+				const scale = height / (gender === "male" ? 175 : 162); 
+
+				// 3. Tanner / Pubertät – verbesserte Version
+				const tanner = this.calcTanner(gender, age); // liefert { primary, pubic }
+
+				// Verständliche Beschreibungen (deutsch, kurz & präzise)
+				const tannerDescriptions = {
+					breast: [
+						"Vorpubertär (flach, keine Drüse)",
+						"Brustknospe (kleine Erhebung)",
+						"Brust wölbt sich deutlich",
+						"Warzenhof bildet separaten Hügel",
+						"Erwachsene, reife Form"
+					],
+					genital: [
+						"Kindlich (vorpubertär)",
+						"Hoden vergrößern, Skrotum rötet",
+						"Penis verlängert sich",
+						"Penis verdickt sich, Skrotum dunkler",
+						"Erwachsene Größe und Form"
+					],
+					pubic: [
+						"Keine Schambehaarung",
+						"Erste spärliche, feine Haare",
+						"Dunkler, dichter, lockig",
+						"Erwachsenen-ähnlich, kleinerer Bereich",
+						"Vollständig erwachsen (dreieckig)"
+					]
+				};
+
+				const tannerText = {
+					primary: gender === "female" 
+						? tannerDescriptions.breast[tanner.primary - 1] 
+						: tannerDescriptions.genital[tanner.primary - 1],
+					pubic: tannerDescriptions.pubic[tanner.pubic - 1]
+				};
+
+				// Nur bei Jugendlichen (<18) detailliert anzeigen, sonst zusammenfassen
+				const tannerDisplay = (age >= 18)
+					? { summary: "Erwachsen (Tanner-Stadium 5)", primary: 5, pubic: 5 }
+					: { primary: tanner.primary, pubic: tanner.pubic, text: tannerText };
+				
+                // 4. BEINE & HÜFTE (Inseam Fix + Detaillierte Umfänge)
+                let inseamRatio = gender === "male" ? 0.45 : 0.46;
+				if (age >= 12 && age <= 18) inseamRatio += 0.02; // Wachstumsschub Beine
+				if (scale > 1.02) inseamRatio += 0.01; // Große Menschen haben längere Beine relativ
+				if (build.factor < 0.95) inseamRatio += 0.005; // Schlanke oft längere Beine
+
+				const inseam = Utils.round(Utils.gaussian(inseamRatio, 0.018) * height);
+                const legTotal = Utils.round(inseam + (height * 0.1)); // Boden bis Hüftknochen
+                
+                // Beinlängen-Aufteilung
+                const thighRatio = Utils.gaussian(0.52, 0.03);
+                const thighLen = Utils.round(legTotal * thighRatio);
+                const shankLen = Utils.round(legTotal - thighLen);
+
+                // Bein-Umfänge (Neu hinzugefügt aus V1)
+                const thighCircum = Utils.round(Utils.gaussian(gender === "male" ? 56 : 54, 5) * scale * build.factor);
+                const calfCircum = Utils.round(Utils.gaussian(gender === "male" ? 37 : 35, 3) * scale * build.factor);
+                const ankleCircum = Utils.round(Utils.gaussian(gender === "male" ? 23 : 21.5, 1.5) * scale * build.factor);
+
+                // 5. TORSO & UMFÄNGE
+                const waist = Utils.round(Utils.gaussian(base.waist * scale * build.factor, 6));
+                const hipsRaw = Utils.round(Utils.gaussian(base.hips * scale * build.factor, 5));
+
+				// Schulterbreite (biakromial)
+				const baseShoulder = gender === "male" ? 41.5 : 36.5;  // biakromial, nicht Bizeps-ähnlich
+				const shoulderWidth = Utils.round(Utils.gaussian(baseShoulder * scale * build.factor, 2.5));
+
+				// Armlänge (Schulter bis Handgelenk)
+				const baseArm = gender === "male" ? 60 : 55;
+				const armLength = Utils.round(Utils.gaussian(baseArm * scale, 3));
+
+                // Gesäß (Gluteal) - Logik aus V1
+                let gluteFactor = gender === "female" ? Utils.gaussian(1.05, 0.04) : Utils.gaussian(0.98, 0.03);
+                gluteFactor *= build.factor > 1.0 ? 1.05 : 1.0;
+                const gluteCircum = Utils.round(hipsRaw * gluteFactor);
+                // Hüfte ist meist etwas kleiner als der maximale Gesäßumfang
+                const hips = Math.min(hipsRaw, gluteCircum); 
+
+                // Brust & Unterbrust
+                let chest, underbust = null, cup = null, nippleDist = null, chestDepth;
+                
+                // Brusttiefe (V1)
+                const baseChestDepth = gender === "male" ? 26 : 24;
+                chestDepth = Utils.round(Utils.gaussian(baseChestDepth * scale * build.factor, 2));
+
+                if (gender === "male") {
+                    chest = Utils.round(Utils.gaussian(100 * scale * build.factor, 6));
+                    if(age >= 14) nippleDist = Utils.round(Utils.gaussian(22, 2.5) * scale * build.factor, 1);
+                } else {
+                    underbust = Utils.round(Utils.gaussian(76 * scale * build.factor, 4));
+                    let diff = 0;
+                    if(tanner.primary > 1) diff = Utils.gaussian((tanner.primary -1) * 3.5, 2);
+                    chest = Utils.round(underbust + Math.max(0, diff));
+                    cup = this.calcCup(chest, underbust);
+                    if(tanner.primary >= 3) nippleDist = Utils.round(Utils.gaussian(22, 2.5) * scale * build.factor, 1);
+                }
+
+                // 6. KOPF & GESICHT (Wiederhergestellt aus V1)
+                let headsMean = age <= 5 ? 4.8 : age <= 10 ? 6.0 : age <= 15 ? 7.1 : 8.0;
+				const headsTall = Utils.round(Utils.gaussian(headsMean, 0.3), 1);
+                const headHeight = Utils.round(height / headsTall);
+                const headCircum = Utils.round(Utils.gaussian(gender === "male" ? 58 : 56, 2) * (headHeight / 22));
+                const headScale = headHeight / 22;
+
+                const face = {
+                    length: Utils.round(Utils.gaussian(gender === "male" ? 19.5 : 18.8, 1.2) * headScale),
+                    width: Utils.round(Utils.gaussian(gender === "male" ? 15.2 : 14.0, 1.0) * headScale),
+                    eyeDist: Utils.round(Utils.gaussian(3.2, 0.3) * headScale),
+                    noseLen: Utils.round(Utils.gaussian(gender === "male" ? 19.5 : 18.8, 1.2) * headScale * 0.32), // approx
+                    noseWidth: Utils.round(Utils.gaussian(gender === "male" ? 3.8 : 3.4, 0.4) * headScale),
+                    mouthWidth: Utils.round(Utils.gaussian(gender === "male" ? 5.1 : 4.8, 0.5) * headScale),
+                    earLen: Utils.round(Utils.gaussian(6.3, 0.5) * headScale),
+                    earProt: Utils.round(Utils.gaussian(1.8, 0.4) * headScale)
+                };
+                face.foreheadH = Utils.round(face.length * 0.33);
+                face.foreheadW = Utils.round(face.width * 0.85);
+
+				// Haarfarbe (deutsche Verteilung, Grau ab 50)
+				const hairColors = ["schwarz", "dunkelbraun", "mittelbraun", "hellbraun", "dunkelblond", "blond", "rot", "grau/weiss"];
+				const hairWeights = age > 50 
+					? [0.03, 0.15, 0.25, 0.20, 0.15, 0.10, 0.02, 0.10]
+					: [0.05, 0.25, 0.30, 0.20, 0.10, 0.08, 0.02, 0.00];
+
+				const eyeColors = ["braun", "blau", "grün", "grau", "hasel"];
+				const eyeWeights = [0.50, 0.30, 0.12, 0.05, 0.03];
+
+				// Einfache gewichtete Zufallsauswahl
+				function weightedChoice(options, weights) {
+					let sum = weights.reduce((a,b) => a+b, 0);
+					let r = Math.random() * sum;
+					let acc = 0;
+					for (let i = 0; i < options.length; i++) {
+						acc += weights[i];
+						if (r <= acc) return options[i];
+					}
+				}
+
+				const hairColor = weightedChoice(hairColors, hairWeights);
+				const eyeColor = weightedChoice(eyeColors, eyeWeights);
+
+
+                // 7. HÄNDE & FÜSSE (Wiederhergestellt aus V1)
+                const handLen = Utils.round(Utils.gaussian(base.hand * scale, 1));
+                const handW = Utils.round(handLen * Utils.gaussian(0.45, 0.03), 1);
+                const fingerLen = Utils.round(handLen * 0.45, 1);
+                const footLen = Utils.round(Utils.gaussian(base.foot * scale, 1.5));
+                const neckLen = Utils.round(Utils.gaussian(gender === "male" ? 13 : 11, 1.5) * scale * build.factor, 1);
+
+                // 8. Kleidung
+                const clothing = this.calcClothing(gender, age, height, waist, inseam, chest, hips, underbust);
+
+				return {
+						meta: { 
+							name: Utils.randomName(gender), 
+							age, 
+							gender, 
+							build: build.type, 
+							tanner: tannerDisplay,      // <-- neu: verständliche Tanner-Daten
+							tannerText: age < 18 ? tannerText : null,
+							hairColor, eyeColor
+						},
+						body: { height, weight, bmi, scale, headsTall, headHeight, headCircum, neckLen },
+						face: face,
+						legs: { 
+							total: legTotal, inseam, thighLen, shankLen, 
+							thighCircum, calfCircum, ankleCircum 
+						},
+						limbs: { handLen, handW, fingerLen, footLen },
+						measurements: {
+							chest, underbust, cup, chestDepth, nippleDist,
+							waist, hips, gluteCircum,
+							shoulderWidth,
+							armLength
+						},
+						clothing
+					};
+            },
+
+			calcHeight(gender, age) {
+				const adultMean = gender === "male" ? 175 : 162;
+				const stdAdult = 7;
+
+				// === Kinder bis 12 Jahre: realistische Durchschnittswerte (ca. 50. Perzentile Deutschland) ===
+				if (age <= 12) {
+					const childHeightMean = {
+						1: 75, 2: 87, 3: 95, 4: 103, 5: 110,
+						6: 116, 7: 122, 8: 128, 9: 134, 10: 140,
+						11: 146, 12: 153
+					};
+					const base = childHeightMean[age] || 153;
+					const stdChild = age <= 5 ? 5 : 7;
+					return Utils.round(Utils.gaussian(base, stdChild));
+				}
+
+				// === Erwachsene ab 18 ===
+				if (age >= 18) {
+					let mean = adultMean;
+					if (age > 60) mean -= (age - 60) * 0.2; // ca. 0.2 cm Schrumpf pro Jahr ab 60
+					return Utils.round(Utils.gaussian(mean, stdAdult));
+				}
+
+				// === Pubertät 13–17 Jahre: Sigmoid-Wachstumsschub ===
+				const peakAge = gender === "male" ? 14 : 12; // Mitte des stärksten Wachstums
+				const growthSpan = 6; // Hauptphase ca. 6 Jahre
+
+				// t von -0.5 bis 1.5 → steile S-Kurve um den Peak
+				const t = (age - (peakAge - 2)) / growthSpan; // Start bei ca. 10–12
+				const sigmoid = 1 / (1 + Math.exp(-5 * (t - 0.5))); // steiler Übergang
+
+				const startHeight = gender === "male" ? 153 : 152; // ca. mit 12 Jahren
+				const teenHeight = startHeight + sigmoid * (adultMean - startHeight);
+
+				return Utils.round(Utils.gaussian(teenHeight, 8)); // etwas mehr Variation in der Pubertät
+			},
+
+			calcWeight(height, age, buildFactor) {
+				// Realistischere BMI-Mittelwerte je nach Alter (basierend auf KiGGS / CDC)
+				let bmiMean;
+				if (age <= 5) bmiMean = 15.5;
+				else if (age <= 10) bmiMean = 16 + (age - 5) * 0.4;     // langsamer Anstieg
+				else if (age <= 15) bmiMean = 18 + (age - 10) * 0.6;     // Pubertätsanstieg
+				else if (age <= 20) bmiMean = 21 + (age - 15) * 0.4;     // Ausklang
+				else if (age <= 40) bmiMean = 24.5;
+				else if (age <= 60) bmiMean = 26;
+				else bmiMean = 25; // leichtes Absinken im hohen Alter
+
+				// Körperbau beeinflusst BMI stärker bei Erwachsenen
+				const adjustedBmiMean = bmiMean * buildFactor;
+
+				// Gauß-Verteilung mit realistischer Streuung
+				const bmi = Utils.gaussian(adjustedBmiMean, age < 18 ? 2.0 : 3.0);
+
+				return Utils.round((height / 100) ** 2 * bmi, 1);
+			},
+
+			calcTanner(gender, age) {
+				// Basisstadien je nach Alter (etwas unterschiedlich für primär und pubic)
+				let primaryBase = 1;
+				let pubicBase = 1;
+
+				// Schambehaarung (pubic) beginnt meist etwas früher
+				if (age >= 9)  pubicBase = 2;
+				if (age >= 11) pubicBase = 3;
+				if (age >= 13) pubicBase = 4;
+				if (age >= 15) pubicBase = 5;
+
+				// Primäre Entwicklung (Brust/Genitalien) etwas später
+				if (age >= 10) primaryBase = 2;
+				if (age >= 12) primaryBase = 3;
+				if (age >= 14) primaryBase = 4;
+				if (age >= 16) primaryBase = 5;
+
+				// Geschlechtsspezifische Feinjustierung (Mädchen oft etwas früher)
+				if (gender === "female") {
+					primaryBase = Math.min(5, primaryBase + 0.3); // leicht früher
+				} else {
+					primaryBase = Math.max(1, primaryBase - 0.2); // Jungen etwas später
+				}
+
+				// Unabhängige Zufallsvariation pro Merkmal
+				const primaryVariation = Utils.gaussian(0, 0.6); // ± ca. 1 Stadium
+				const pubicVariation = Utils.gaussian(0, 0.7);
+
+				const primary = Math.max(1, Math.min(5, Math.round(primaryBase + primaryVariation)));
+				const pubic = Math.max(1, Math.min(5, Math.round(pubicBase + pubicVariation)));
+
+				return {
+					primary: primary,
+					pubic: pubic
+				};
+			},
+
+            calcCup(bust, underbust) {
+                if(!underbust) return "";
+                const diff = bust - underbust;
+                const cups = ["AA", "A", "B", "C", "D", "E", "F"];
+                const idx = Math.floor((diff - 10) / 2);
+                return cups[Math.max(0, Math.min(6, idx))] || "AA";
+            },
+
+            calcClothing(gender, age, height, waist, inseam, chest, hips, underbust) {
+                if(age < 15) return { main: "Kindergröße " + (Math.round(height/6)*6) };
+                
+                const sizes = {};
+                const wInch = Math.round(waist / 2.54);
+                const lInch = Math.round(inseam / 2.54);
+                const lStandard = lInch < 31 ? 30 : lInch < 33 ? 32 : 34;
+                
+                if(gender === "male") {
+                    sizes.pants = `W${wInch} / L${lStandard}`;
+                    sizes.shirt = chest < 94 ? "S (46)" : chest < 102 ? "M (50)" : "L (54)";
+                } else {
+                    sizes.pants = `Jeans: ${Math.max(24, wInch - 5)} / ${lStandard}`;
+                    sizes.dress = hips < 92 ? "36 (S)" : hips < 100 ? "38/40 (M)" : "42 (L)";
+                    if(underbust) {
+                        const band = Math.round(underbust / 5) * 5;
+                        const cup = this.calcCup(chest, underbust);
+                        sizes.bra = `${band}${cup}`;
+                    }
+                }
+                return sizes;
+            }
+        };
+
+        /**
+         * =================================================================
+         * TEIL 3: UI / VIEW
+         * =================================================================
+         */
+        const UI = {
+            render(data) {
+                const res = document.getElementById("result");
+                const themeClass = data.meta.gender === 'male' ? 'theme-male' : 'theme-female';
+                
+                let html = `<table class="${themeClass}">`;
+                const row = (label, val, css = "") => `<tr><td><div class="${css}">${label}</div></td><td>${val}</td></tr>`;
+                
+                const getBmiBadge = (bmi) => {
+                    let cls = "bmi-normal", txt = "Normal";
+                    if(bmi < 18.5) { cls = "bmi-under"; txt = "Untergewicht"; }
+                    else if(bmi > 25) { cls = "bmi-over"; txt = "Übergewicht"; }
+                    if(bmi > 30) { cls = "bmi-obese"; txt = "Adipös"; }
+                    return `<span class="badge ${cls}">${bmi} (${txt})</span>`;
+                };
+
+                // 1. Übersicht
+                html += row("Name", `<strong>${data.meta.name}</strong>`);
+                html += row("Alter", data.meta.age + " Jahre");
+                html += row("Körpertyp", data.meta.build);
+                html += row("Größe / Gewicht", `${data.body.height} cm / ${data.body.weight} kg`);
+                html += row("BMI", getBmiBadge(data.body.bmi));
+				html += row("Aussehen", "", "row-section");
+				html += row("Haarfarbe", data.meta.hairColor);
+				html += row("Augenfarbe", data.meta.eyeColor);
+
+                // 2. Kopf & Gesicht (NEU)
+                html += row("Kopf & Gesicht", "", "row-section");
+                html += row("Kopfhöhe (absolut)", data.body.headHeight + " cm");
+                html += row("Kopf-Proportion", `1 zu ${data.body.headsTall}`);
+                html += row("Kopfumfang", data.body.headCircum + " cm", "row-highlight");
+                html += row("Gesicht (Länge x Breite)", `${data.face.length} x ${data.face.width} cm`);
+                html += row("Stirn (Höhe x Breite)", `${data.face.foreheadH} x ${data.face.foreheadW} cm`);
+                html += row("Augenabstand", data.face.eyeDist + " cm");
+                html += row("Nase (Länge x Breite)", `${data.face.noseLen} x ${data.face.noseWidth} cm`);
+                html += row("Mundbreite", data.face.mouthWidth + " cm");
+                html += row("Ohr (Größe / Abstehend)", `${data.face.earLen} cm / ${data.face.earProt} cm`);
+                html += row("Halslänge", data.body.neckLen + " cm");
+
+                // 3. Torso (NEU: Details wieder da)
+                html += row("Torso & Oberkörper", "", "row-section");
+                html += row("Brustumfang", data.measurements.chest + " cm");
+                if(data.measurements.underbust) html += row("Unterbrustumfang", data.measurements.underbust + " cm");
+                if(data.measurements.nippleDist) html += row("Brustwarzenabstand", data.measurements.nippleDist + " cm", "row-highlight");
+                html += row("Brustkorbtiefe", data.measurements.chestDepth + " cm");
+				html += row("Schulterbreite", data.measurements.shoulderWidth + " cm", "row-highlight");
+				html += row("Armlänge", data.measurements.armLength + " cm");
+                html += row("Taille", data.measurements.waist + " cm");
+                html += row("Hüfte", data.measurements.hips + " cm");
+                html += row("Gesäßumfang (Max)", data.measurements.gluteCircum + " cm", "row-highlight");
+
+                // 4. Hände (NEU)
+                html += row("Hände & Arme", "", "row-section");
+                html += row("Handlänge", data.limbs.handLen + " cm");
+                html += row("Handbreite", data.limbs.handW + " cm");
+                html += row("Fingerlänge (Mittel)", data.limbs.fingerLen + " cm");
+
+                // 5. Beine & Füße (NEU: Details wieder da)
+                html += row("Beine & Füße", "", "row-section");
+                html += row("Beinlänge Gesamt", data.legs.total + " cm");
+                html += row("Innenbeinlänge (Inseam)", `<strong>${data.legs.inseam} cm</strong>`, "row-highlight");
+                html += row("Oberschenkel (Länge/Umfang)", `${data.legs.thighLen} cm / ${data.legs.thighCircum} cm`);
+                html += row("Wadenumfang", data.legs.calfCircum + " cm");
+                html += row("Knöchelumfang", data.legs.ankleCircum + " cm");
+                html += row("Fußlänge", data.limbs.footLen + " cm");
+                
+                // 6. Kleidung & Bio
+                html += row("Sonstiges", "", "row-section");
+                if(data.clothing.pants) html += row("Hose", data.clothing.pants, "row-clothing");
+                if(data.clothing.shirt) html += row("Oberteil", data.clothing.shirt, "row-clothing");
+                if(data.clothing.bra) html += row("BH-Größe", data.clothing.bra, "row-clothing");
+				
+				html += row("Pubertätsentwicklung", "", "row-section");
+
+				if (data.meta.age >= 18) {
+					html += row("Entwicklungsstand", data.meta.tanner.summary, "row-puberty");
+				} else {
+					if (data.meta.gender === "female") {
+						html += row("Brustentwicklung (Tanner)", 
+							`${data.meta.tanner.primary} – ${data.meta.tannerText.primary}`, 
+							"row-puberty");
+					} else {
+						html += row("Genitalentwicklung (Tanner)", 
+							`${data.meta.tanner.primary} – ${data.meta.tannerText.primary}`, 
+							"row-puberty");
+					}
+					html += row("Schambehaarung (Tanner)", 
+						`${data.meta.tanner.pubic} – ${data.meta.tannerText.pubic}`, 
+						"row-puberty");
+				}
+				
+                html += "</table>";
+                res.innerHTML = html;
+            }
+        };
+
+        const app = {
+            run() {
+                const gender = document.getElementById("gender").value;
+                const age = parseInt(document.getElementById("age").value) || 25;
+                UI.render(CharacterGenerator.generate(gender, age));
+            }
+        };
+        window.onload = app.run;
+    </script>
+</body>
+</html>
